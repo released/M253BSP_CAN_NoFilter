@@ -1,7 +1,7 @@
 # M253BSP_CAN_NoFilter
  M253BSP_CAN_NoFilter
 
-update @ 2023/02/01
+update @ 2023/02/02
 
 1. set CAN FD as CAN bus mode , and no filter ID , to receive message
 
