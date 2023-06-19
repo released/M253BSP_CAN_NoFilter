@@ -9,8 +9,8 @@
 
 struct flag_32bit flag_PROJ_CTL;
 #define FLAG_PROJ_TIMER_PERIOD_1000MS                 	(flag_PROJ_CTL.bit0)
-#define FLAG_PROJ_REVERSE1                   			(flag_PROJ_CTL.bit1)
-#define FLAG_PROJ_REVERSE2                 				(flag_PROJ_CTL.bit2)
+#define FLAG_PROJ_CAN_PERIOD                   			(flag_PROJ_CTL.bit1)
+#define FLAG_PROJ_CAN_LOOPBACK            				(flag_PROJ_CTL.bit2)
 #define FLAG_PROJ_REVERSE3                              (flag_PROJ_CTL.bit3)
 #define FLAG_PROJ_REVERSE4                              (flag_PROJ_CTL.bit4)
 #define FLAG_PROJ_REVERSE5                              (flag_PROJ_CTL.bit5)
@@ -28,6 +28,8 @@ CANFD_FD_MSG_T      g_sTxMsgFrame;
 
 uint8_t msg_rx_buffer_idx = 0;
 uint8_t msg_tx_buffer_idx = 0;
+
+uint8_t num_cnt = 0;
 
 #define ENABLE_LOOP_BACK
 /*_____ M A C R O S ________________________________________________________*/
@@ -135,7 +137,8 @@ void CAN_Rx_polling(void)
 
         for (u8Cnt = 0; u8Cnt <  g_sRxMsgFrame.u32DLC; u8Cnt++)
         {
-            printf("%02u ,", g_sRxMsgFrame.au8Data[u8Cnt]);
+            // printf("%02u ,", g_sRxMsgFrame.au8Data[u8Cnt]);            
+            printf("0x%2X ,", g_sRxMsgFrame.au8Data[u8Cnt]);
         }
 
         printf("\r\n");
@@ -154,7 +157,10 @@ void CAN_SendMessage(CANFD_FD_MSG_T *psTxMsg, E_CANFD_ID_TYPE eIdType, uint32_t 
     psTxMsg->bBitRateSwitch = 0;
     psTxMsg->u32DLC = u8Len;
 
-    for (u8Cnt = 0; u8Cnt < psTxMsg->u32DLC; u8Cnt++) psTxMsg->au8Data[u8Cnt] = u8Cnt;
+    for (u8Cnt = 0; u8Cnt < psTxMsg->u32DLC; u8Cnt++)
+    {
+        psTxMsg->au8Data[u8Cnt] = u8Cnt + num_cnt;
+    } 
 
     /* use message buffer 0 */
     if (eIdType == eCANFD_SID)
@@ -198,16 +204,27 @@ uint32_t Get_CAN_BitRate(CANFD_T *psCanfd)
     return u32BitRate;
 }
 
-void CAN_Init(void)
+void CAN_Init(uint8_t on)
 {
     CANFD_FD_T sCANFD_Config;
+
+    SYS_ResetModule(CANFD0_RST);
 
     /*Get the CAN configuration value*/
     CANFD_GetDefaultConfig(&sCANFD_Config, CANFD_OP_CAN_MODE);
 
     #if defined (ENABLE_LOOP_BACK)
     /*Enable internal loopback mode*/
-    sCANFD_Config.sBtConfig.bEnableLoopBack = TRUE;
+
+    if (on)
+    {
+        sCANFD_Config.sBtConfig.bEnableLoopBack = TRUE;
+    }
+    else
+    {
+        sCANFD_Config.sBtConfig.bEnableLoopBack = FALSE;
+    }
+
     #endif
 
     sCANFD_Config.sBtConfig.sNormBitRate.u32BitRate = 1000000;
@@ -267,9 +284,16 @@ void loop(void)
 
         // printf("%s(timer) : %4d\r\n",__FUNCTION__,LOG1++);
         PB0 ^= 1;        
+
+        if (FLAG_PROJ_CAN_PERIOD)
+        {
+            num_cnt += 0x10;
+            CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x5555, 8);
+        }
     }
 
     CAN_Rx_polling();
+    
 }
 
 void UARTx_Process(void)
@@ -298,6 +322,16 @@ void UARTx_Process(void)
 			case '4':
                 CAN_SendMessage(&g_sTxMsgFrame, eCANFD_XID, 0x4444, 8);    
 				break;
+
+            case '5':
+                FLAG_PROJ_CAN_PERIOD = 1;
+                break;
+            case '6':
+                FLAG_PROJ_CAN_LOOPBACK ^= 1;
+                printf("loopback : %d\r\n",FLAG_PROJ_CAN_LOOPBACK);
+                CAN_Init(FLAG_PROJ_CAN_LOOPBACK);
+                break;
+
 
 			case 'X':
 			case 'x':
@@ -444,7 +478,7 @@ int main()
     TickSetTickEvent(5000, TickCallback_processB);  // 5000 ms
     #endif
 
-    CAN_Init();
+    CAN_Init(1);
 
 
     /* Got no where to go, just loop forever */

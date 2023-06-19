@@ -1,6 +1,16 @@
 # M253BSP_CAN_NoFilter
  M253BSP_CAN_NoFilter
 
+
+update @ 2023/06/19
+
+1. Add send TX period , with data counter 0x010 each bytes , by press digit '5'
+
+![image](https://github.com/released/M253BSP_CAN_NoFilter/blob/main/log2.jpg)	
+
+2. Add enable LOOPBACK on/off , by press digit '6'
+
+
 update @ 2023/02/02
 
 1. set CAN FD as CAN bus mode , and no filter ID , to receive message
