@@ -31,11 +31,11 @@ uint8_t msg_tx_buffer_idx = 0;
 
 uint8_t num_cnt = 0;
 
-#define ENABLE_LOOP_BACK
-// #define ENABLE_MONITOR_MODE
+// #define ENABLE_LOOP_BACK
+#define ENABLE_MONITOR_MODE
 
-#define ENABLE_CAN_NORMAL
-// #define ENABLE_CAN_FD
+// #define ENABLE_CAN_NORMAL
+#define ENABLE_CAN_FD
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -159,7 +159,15 @@ void CAN_SendMessage(CANFD_FD_MSG_T *psTxMsg, E_CANFD_ID_TYPE eIdType, uint32_t 
     psTxMsg->u32Id = u32Id;
     psTxMsg->eIdType = eIdType;
     psTxMsg->eFrmType = eCANFD_DATA_FRM;
-    psTxMsg->bBitRateSwitch = 0;
+
+    #if defined (ENABLE_CAN_FD)
+    /*Set CAN FD frame format */
+    psTxMsg->bFDFormat = 1;
+    /*Set the bitrate switch */
+    psTxMsg->bBitRateSwitch = 1;
+    #endif
+
+
     psTxMsg->u32DLC = u8Len;
 
     for (u8Cnt = 0; u8Cnt < psTxMsg->u32DLC; u8Cnt++)
@@ -167,21 +175,27 @@ void CAN_SendMessage(CANFD_FD_MSG_T *psTxMsg, E_CANFD_ID_TYPE eIdType, uint32_t 
         psTxMsg->au8Data[u8Cnt] = u8Cnt + num_cnt;
     } 
 
+    #if 1
     /* use message buffer 0 */
     if (eIdType == eCANFD_SID)
         printf("Send to transmit message 0x%08x (11-bit)\n", psTxMsg->u32Id);
     else
         printf("Send to transmit message 0x%08x (29-bit)\n", psTxMsg->u32Id);
+    #endif
 
     // if (CANFD_TransmitTxMsg(CANFD0, 0, psTxMsg) != eCANFD_TRANSMIT_SUCCESS)
     // {
     //     printf("Failed to transmit message\n");
     // }
 
-    while (CANFD_TransmitTxMsg(CANFD0, msg_tx_buffer_idx , psTxMsg) != eCANFD_TRANSMIT_SUCCESS);
+    while (CANFD_TransmitTxMsg(CANFD0, msg_tx_buffer_idx , psTxMsg) != eCANFD_TRANSMIT_SUCCESS)
+    {
+        printf("************Failed to transmit message\n");
+    }
 
+    #if 1
     printf("transmit done\r\n");
-
+    #endif
 }
 
 
@@ -246,14 +260,19 @@ void CAN_Init(uint8_t on)
     uint32_t u32NormBitRate = 1000000;
     uint32_t u32DataBitRate = 0;
     #elif defined (ENABLE_CAN_FD)
-    uint32_t u32NormBitRate = 1000000;
-    uint32_t u32DataBitRate = 4000000;
+    uint32_t u32NormBitRate = 250000;//1000000;
+    uint32_t u32DataBitRate = 2000000;//4000000;
     #endif
 
     SYS_ResetModule(CANFD0_RST);
 
-    /*Get the CAN configuration value*/
+    #if defined (ENABLE_CAN_NORMAL)
+    /*Get the CAN configuration value*/    
     CANFD_GetDefaultConfig(&sCANFD_Config, CANFD_OP_CAN_MODE);
+    #elif defined (ENABLE_CAN_FD)
+    /*Get the CAN configuration value*/
+    CANFD_GetDefaultConfig(&sCANFD_Config, CANFD_OP_CAN_FD_MODE);
+    #endif
 
     #if defined (ENABLE_LOOP_BACK)
     /*Enable internal loopback mode*/
@@ -271,8 +290,11 @@ void CAN_Init(uint8_t on)
     sCANFD_Config.sBtConfig.sDataBitRate.u32BitRate = u32DataBitRate;
     /*Open the CAN FD feature*/
     CANFD_Open(CANFD0, &sCANFD_Config);
+
     printf("CANFD monitoring Nominal baud rate(bps): %d\r\n", Get_CANFD_NominalBitRate(CANFD0));
+    #if defined (ENABLE_CAN_FD)
     printf("CANFD monitoring Data baud rate(bps): %d\r\n", Get_CANFD_DataBitRate(CANFD0));
+    #endif
 
     #if defined (ENABLE_MONITOR_MODE)
     /*Enable the Bus Monitoring Mode */
@@ -334,7 +356,8 @@ void loop(void)
         if (FLAG_PROJ_CAN_PERIOD)
         {
             num_cnt += 0x10;
-            CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x5555, 8);
+            CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x111, 8);
+            CAN_SendMessage(&g_sTxMsgFrame, eCANFD_XID, 0x5555, 8);
         }
     }
 
@@ -357,10 +380,10 @@ void UARTx_Process(void)
 		switch(res)
 		{
 			case '1':    
-                CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x1111, 8);
+                CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x111, 8);
 				break;
 			case '2':
-                CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x2222, 8);
+                CAN_SendMessage(&g_sTxMsgFrame, eCANFD_SID, 0x222, 8);
 				break;
 			case '3':
                 CAN_SendMessage(&g_sTxMsgFrame, eCANFD_XID, 0x3333, 8);        
@@ -468,23 +491,28 @@ void SYS_Init(void)
 //    CLK_WaitClockReady(CLK_STATUS_LXTSTB_Msk);	
 
     /* Switch HCLK clock source to Internal RC and HCLK source divide 1 */
-    // CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HIRC, CLK_CLKDIV0_HCLK(1));
-    CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HXT, CLK_CLKDIV0_HCLK(1));    
+    CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HIRC, CLK_CLKDIV0_HCLK(1));
+    // CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HXT, CLK_CLKDIV0_HCLK(1));    
 
     CLK_EnableModuleClock(GPB_MODULE);
+    CLK_EnableModuleClock(GPC_MODULE);
 
     CLK_EnableModuleClock(TMR1_MODULE);
   	CLK_SetModuleClock(TMR1_MODULE, CLK_CLKSEL1_TMR1SEL_HIRC, 0);
 
     /* Select CAN FD0 clock source is HCLK */
     CLK_SetModuleClock(CANFD0_MODULE, CLK_CLKSEL0_CANFD0SEL_HCLK, CLK_CLKDIV4_CANFD0(1));
+    // CLK_SetModuleClock(CANFD0_MODULE, CLK_CLKSEL0_CANFD0SEL_HXT, CLK_CLKDIV4_CANFD0(1));
     /* Enable CAN FD0 peripheral clock */
     CLK_EnableModuleClock(CANFD0_MODULE);
 
 
-    SYS->GPB_MFPH = (SYS->GPB_MFPH & (~SYS_GPB_MFPH_PB12MFP_Msk)) | SYS_GPB_MFPH_PB12MFP_CAN0_RXD;
-    SYS->GPB_MFPH = (SYS->GPB_MFPH & (~SYS_GPB_MFPH_PB13MFP_Msk)) | SYS_GPB_MFPH_PB13MFP_CAN0_TXD;
+    // SYS->GPB_MFPH = (SYS->GPB_MFPH & (~SYS_GPB_MFPH_PB12MFP_Msk)) | SYS_GPB_MFPH_PB12MFP_CAN0_RXD;
+    // SYS->GPB_MFPH = (SYS->GPB_MFPH & (~SYS_GPB_MFPH_PB13MFP_Msk)) | SYS_GPB_MFPH_PB13MFP_CAN0_TXD;
 
+    /* Set PC multi-function pins for CAN RXD and TXD */
+    SYS->GPC_MFPL = (SYS->GPC_MFPL & (~SYS_GPC_MFPL_PC4MFP_Msk)) | SYS_GPC_MFPL_PC4MFP_CAN0_RXD;
+    SYS->GPC_MFPL = (SYS->GPC_MFPL & (~SYS_GPC_MFPL_PC5MFP_Msk)) | SYS_GPC_MFPL_PC5MFP_CAN0_TXD;
 
     /* Debug UART clock setting */
     UartDebugCLK();

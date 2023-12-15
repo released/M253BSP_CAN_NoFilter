@@ -421,6 +421,8 @@ static void CANFD_GetSegments(uint32_t u32NominalBaudRate, uint32_t u32DataBaudR
     else if (u32NominalBaudRate >= 800000) ideal_sp = 0.800;
     else                                   ideal_sp = 0.875;
 
+    // ideal_sp = 0.750;  
+
     /* distribute time quanta */
     int32P1 = (int)(u32Ntq * ideal_sp);
     /* can controller doesn't separate prop seg and phase seg 1 */
