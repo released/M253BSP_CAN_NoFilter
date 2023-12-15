@@ -32,6 +32,11 @@ uint8_t msg_tx_buffer_idx = 0;
 uint8_t num_cnt = 0;
 
 #define ENABLE_LOOP_BACK
+// #define ENABLE_MONITOR_MODE
+
+#define ENABLE_CAN_NORMAL
+// #define ENABLE_CAN_FD
+
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
@@ -179,7 +184,11 @@ void CAN_SendMessage(CANFD_FD_MSG_T *psTxMsg, E_CANFD_ID_TYPE eIdType, uint32_t 
 
 }
 
-uint32_t Get_CAN_BitRate(CANFD_T *psCanfd)
+
+/*---------------------------------------------------------------------------*/
+/*  Get the CANFD interface Nominal bit rate Function                        */
+/*---------------------------------------------------------------------------*/
+uint32_t Get_CANFD_NominalBitRate(CANFD_T *psCanfd)
 {
     uint32_t u32BitRate = 0;
     uint32_t u32CanClk  = 0;
@@ -188,18 +197,43 @@ uint32_t Get_CAN_BitRate(CANFD_T *psCanfd)
     uint8_t  u8NtSeg1 = 0;
     uint8_t  u8NtSeg2 = 0;
 
-    if(CLK_GetModuleClockSource(CANFD0_MODULE) == (CLK_CLKSEL0_CANFD0SEL_HCLK >> CLK_CLKSEL0_CANFD0SEL_Pos))
-       u32CanClk = CLK_GetHCLKFreq();
+    if (CLK_GetModuleClockSource(CANFD0_MODULE) == (CLK_CLKSEL0_CANFD0SEL_HCLK >> CLK_CLKSEL0_CANFD0SEL_Pos))
+        u32CanClk = CLK_GetHCLKFreq();
     else
-       u32CanClk = CLK_GetHXTFreq();
+        u32CanClk = CLK_GetHXTFreq();
 
     u32CanDiv = ((CLK->CLKDIV4 & CLK_CLKDIV4_CANFD0DIV_Msk) >> CLK_CLKDIV4_CANFD0DIV_Pos) + 1;
     u32CanClk = u32CanClk / u32CanDiv;
-
-    u8Tq = ((psCanfd->NBTP & CANFD_NBTP_NBRP_Msk) >> CANFD_NBTP_NBRP_Pos)+1 ;
+    u8Tq = ((psCanfd->NBTP & CANFD_NBTP_NBRP_Msk) >> CANFD_NBTP_NBRP_Pos) + 1 ;
     u8NtSeg1 = ((psCanfd->NBTP & CANFD_NBTP_NTSEG1_Msk) >> CANFD_NBTP_NTSEG1_Pos);
     u8NtSeg2 = ((psCanfd->NBTP & CANFD_NBTP_NTSEG2_Msk) >> CANFD_NBTP_NTSEG2_Pos);
-    u32BitRate = u32CanClk / u8Tq / (u8NtSeg1+u8NtSeg2+3); 
+    u32BitRate = u32CanClk / u8Tq / (u8NtSeg1 + u8NtSeg2 + 3);
+
+    return u32BitRate;
+}
+/*---------------------------------------------------------------------------*/
+/*  Get the CANFD interface Data bit rate Function                           */
+/*---------------------------------------------------------------------------*/
+uint32_t Get_CANFD_DataBitRate(CANFD_T *psCanfd)
+{
+    uint32_t u32BitRate = 0;
+    uint32_t u32CanClk  = 0;
+    uint32_t u32CanDiv  = 0;
+    uint8_t  u8Tq = 0;
+    uint8_t  u8NtSeg1 = 0;
+    uint8_t  u8NtSeg2 = 0;
+
+    if (CLK_GetModuleClockSource(CANFD0_MODULE) == (CLK_CLKSEL0_CANFD0SEL_HCLK >> CLK_CLKSEL0_CANFD0SEL_Pos))
+        u32CanClk = CLK_GetHCLKFreq();
+    else
+        u32CanClk = CLK_GetHXTFreq();
+
+    u32CanDiv = ((CLK->CLKDIV4 & CLK_CLKDIV4_CANFD0DIV_Msk) >> CLK_CLKDIV4_CANFD0DIV_Pos) + 1;
+    u32CanClk = u32CanClk / u32CanDiv;
+    u8Tq = ((psCanfd->DBTP & CANFD_DBTP_DBRP_Msk) >> CANFD_DBTP_DBRP_Pos) + 1 ;
+    u8NtSeg1 = ((psCanfd->DBTP & CANFD_DBTP_DTSEG1_Msk) >> CANFD_DBTP_DTSEG1_Pos);
+    u8NtSeg2 = ((psCanfd->DBTP & CANFD_DBTP_DTSEG2_Msk) >> CANFD_DBTP_DTSEG2_Pos);
+    u32BitRate = u32CanClk / u8Tq / (u8NtSeg1 + u8NtSeg2 + 3);
 
     return u32BitRate;
 }
@@ -208,6 +242,14 @@ void CAN_Init(uint8_t on)
 {
     CANFD_FD_T sCANFD_Config;
 
+    #if defined (ENABLE_CAN_NORMAL)
+    uint32_t u32NormBitRate = 1000000;
+    uint32_t u32DataBitRate = 0;
+    #elif defined (ENABLE_CAN_FD)
+    uint32_t u32NormBitRate = 1000000;
+    uint32_t u32DataBitRate = 4000000;
+    #endif
+
     SYS_ResetModule(CANFD0_RST);
 
     /*Get the CAN configuration value*/
@@ -215,7 +257,6 @@ void CAN_Init(uint8_t on)
 
     #if defined (ENABLE_LOOP_BACK)
     /*Enable internal loopback mode*/
-
     if (on)
     {
         sCANFD_Config.sBtConfig.bEnableLoopBack = TRUE;
@@ -224,14 +265,19 @@ void CAN_Init(uint8_t on)
     {
         sCANFD_Config.sBtConfig.bEnableLoopBack = FALSE;
     }
-
     #endif
 
-    sCANFD_Config.sBtConfig.sNormBitRate.u32BitRate = 1000000;
-    sCANFD_Config.sBtConfig.sDataBitRate.u32BitRate = 0;
+    sCANFD_Config.sBtConfig.sNormBitRate.u32BitRate = u32NormBitRate;
+    sCANFD_Config.sBtConfig.sDataBitRate.u32BitRate = u32DataBitRate;
     /*Open the CAN FD feature*/
     CANFD_Open(CANFD0, &sCANFD_Config);
-    printf("Real baud-rate value(bps): %d\r\n", Get_CAN_BitRate(CANFD0));
+    printf("CANFD monitoring Nominal baud rate(bps): %d\r\n", Get_CANFD_NominalBitRate(CANFD0));
+    printf("CANFD monitoring Data baud rate(bps): %d\r\n", Get_CANFD_DataBitRate(CANFD0));
+
+    #if defined (ENABLE_MONITOR_MODE)
+    /*Enable the Bus Monitoring Mode */
+    CANFD0->CCCR |= CANFD_CCCR_MON_Msk;
+    #endif
 
     CANFD_SetGFC(CANFD0, eCANFD_ACC_NON_MATCH_FRM_RX_FIFO0, eCANFD_ACC_NON_MATCH_FRM_RX_FIFO0, 1, 1);
     /* Enable RX fifo0 new message interrupt using interrupt line 0. */
@@ -412,8 +458,8 @@ void SYS_Init(void)
     CLK_EnableXtalRC(CLK_PWRCTL_HIRCEN_Msk);
     CLK_WaitClockReady(CLK_STATUS_HIRCSTB_Msk);
 
-//    CLK_EnableXtalRC(CLK_PWRCTL_HXTEN_Msk);
-//    CLK_WaitClockReady(CLK_STATUS_HXTSTB_Msk);
+   CLK_EnableXtalRC(CLK_PWRCTL_HXTEN_Msk);
+   CLK_WaitClockReady(CLK_STATUS_HXTSTB_Msk);
 
 //    CLK_EnableXtalRC(CLK_PWRCTL_LIRCEN_Msk);
 //    CLK_WaitClockReady(CLK_STATUS_LIRCSTB_Msk);	
@@ -422,7 +468,8 @@ void SYS_Init(void)
 //    CLK_WaitClockReady(CLK_STATUS_LXTSTB_Msk);	
 
     /* Switch HCLK clock source to Internal RC and HCLK source divide 1 */
-    CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HIRC, CLK_CLKDIV0_HCLK(1));
+    // CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HIRC, CLK_CLKDIV0_HCLK(1));
+    CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HXT, CLK_CLKDIV0_HCLK(1));    
 
     CLK_EnableModuleClock(GPB_MODULE);
 

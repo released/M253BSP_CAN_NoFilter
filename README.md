@@ -2,6 +2,11 @@
  M253BSP_CAN_NoFilter
 
 
+update @ 2023/12/15
+
+1. Add define : ENABLE_MONITOR_MODE , and split ENABLE_CAN_NORMAL , ENABLE_CAN_FD
+
+
 update @ 2023/06/19
 
 1. Add send TX period , with data counter 0x010 each bytes , by press digit '5'
